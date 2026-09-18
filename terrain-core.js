@@ -15,7 +15,18 @@
     if (!code || code === 'LOCAL') return false;
     if (global.proj4 && proj4.defs(code)) return true;
 
-    var m = code.match(/^EPSG:(326|327)(\d{2})$/);
+    // VN-2000 / UTM zone 48N and 49N (EPSG:3405 / EPSG:3406).
+    // These definitions use the published seven-parameter transformation to WGS84.
+    if (global.proj4 && code === 'EPSG:3405') {
+      proj4.defs(code, '+proj=utm +zone=48 +ellps=WGS84 +towgs84=-191.90441429,-39.30318279,-111.45032835,-0.00928836,0.01975479,-0.00427372,0.252906278 +units=m +no_defs +type=crs');
+      return true;
+    }
+    if (global.proj4 && code === 'EPSG:3406') {
+      proj4.defs(code, '+proj=utm +zone=49 +ellps=WGS84 +towgs84=-191.90441429,-39.30318279,-111.45032835,-0.00928836,0.01975479,-0.00427372,0.252906278 +units=m +no_defs +type=crs');
+      return true;
+    }
+
+    var m = code.match(/^(EPSG:)?(326|327)(\d{2})$/);
     if (m && global.proj4) {
       var zone = Number(m[2]);
       var south = m[1] === '327' ? ' +south' : '';
