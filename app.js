@@ -57,7 +57,9 @@
     about: byId('about-dialog'),
     paletteBackdrop: byId('palette-backdrop'),
     paletteInput: byId('palette-input'),
-    paletteResults: byId('palette-results')
+    paletteResults: byId('palette-results'),
+    themeToggle: byId('theme-toggle'),
+    focusToggle: byId('focus-toggle')
   };
 
   var state = {
@@ -83,7 +85,12 @@
     hoverLngLat: null,
     snapEnabled: false,
     orthoEnabled: true,
-    snapTolerance: 12
+    snapTolerance: 12,
+    lastHudTime: 0,
+    lastSketchTime: 0,
+    demImageUrl: null,
+    theme: 'light',
+    focusMode: false
   };
 
   var capabilities = [
@@ -298,6 +305,15 @@
     try { if (state.map.getSource(DEM_SOURCE)) state.map.removeSource(DEM_SOURCE); } catch (_) {}
   }
 
+  function canvasToBlob(canvas) {
+    return new Promise(function (resolve, reject) {
+      canvas.toBlob(function (blob) {
+        if (blob) resolve(blob);
+        else reject(new Error('Không tạo được ảnh preview DEM.'));
+      }, 'image/png');
+    });
+  }
+
   function renderDem(fit) {
     if (!state.map || !state.dem) return;
 
@@ -308,10 +324,12 @@
     }
 
     setBusy(true, 'Đang render ' + state.renderMode + '...');
-    setTimeout(function () {
+    setTimeout(async function () {
       try {
-        var canvas = C.renderCanvas(state.dem, state.renderMode, 1400);
-        var url = canvas.toDataURL('image/png');
+        var canvas = C.renderCanvas(state.dem, state.renderMode, 1280);
+        var blob = await canvasToBlob(canvas);
+        var url = URL.createObjectURL(blob);
+        var oldUrl = state.demImageUrl;
 
         removeDemLayer();
         state.map.addSource(DEM_SOURCE, {
@@ -329,6 +347,9 @@
           }
         });
 
+        state.demImageUrl = url;
+        if (oldUrl) setTimeout(function () { try { URL.revokeObjectURL(oldUrl); } catch (_) {} }, 1500);
+
         if (fit) fitDem();
         updateLayerList();
         setStatus(state.renderMode.toUpperCase() + ' · ' + state.dem.width + '×' + state.dem.height + ' · ' + state.dem.crs);
@@ -338,7 +359,7 @@
       } finally {
         setBusy(false);
       }
-    }, 20);
+    }, 0);
   }
 
   function fitDem() {
@@ -448,7 +469,7 @@
     var y = resolved.point.y;
     state.hoverLngLat = p;
 
-    var z = C.sampleElevation(state.dem, p[0], p[1]);
+    // 60-fps visual cursor path: transforms only.
     el.crosshair.style.setProperty('--cx', x + 'px');
     el.crosshair.style.setProperty('--cy', y + 'px');
     el.crosshair.classList.toggle('is-snapped', resolved.snapped);
@@ -459,27 +480,36 @@
     var top = y + 15;
     if (left + hudWidth > el.stage.clientWidth) left = x - hudWidth - 15;
     if (top + hudHeight > el.stage.clientHeight) top = y - hudHeight - 15;
-    el.cursorHud.style.left = Math.max(4, left) + 'px';
-    el.cursorHud.style.top = Math.max(4, top) + 'px';
+    el.cursorHud.style.transform = 'translate3d(' + Math.max(4, left) + 'px,' + Math.max(4, top) + 'px,0)';
 
-    var text = 'Lon ' + p[0].toFixed(6) + '  Lat ' + p[1].toFixed(6);
-    var demXY = state.dem ? C.fromWgs84(p[0], p[1], state.dem.crs) : null;
-    if (demXY) text = 'X ' + fmt(demXY[0], 3) + '  Y ' + fmt(demXY[1], 3);
+    // Coordinate projection + DEM sampling are intentionally throttled.
+    var now = performance.now();
+    if (now - state.lastHudTime >= 50) {
+      state.lastHudTime = now;
+      var z = C.sampleElevation(state.dem, p[0], p[1]);
+      var text = 'Lon ' + p[0].toFixed(6) + '  Lat ' + p[1].toFixed(6);
+      var demXY = state.dem ? C.fromWgs84(p[0], p[1], state.dem.crs) : null;
+      if (demXY) text = 'X ' + fmt(demXY[0], 3) + '  Y ' + fmt(demXY[1], 3);
 
-    el.hudXY.textContent = text;
-    el.hudZ.textContent = Number.isFinite(z) ? 'Z ' + z.toFixed(2) + ' m' : 'Z —';
-    el.hudDynamic.textContent = dynamicReadout(p);
-    el.statusX.textContent = demXY ? 'X ' + fmt(demXY[0], 3) : 'X ' + p[0].toFixed(5);
-    el.statusY.textContent = demXY ? 'Y ' + fmt(demXY[1], 3) : 'Y ' + p[1].toFixed(5);
-    el.statusZ.textContent = Number.isFinite(z) ? 'Z ' + z.toFixed(2) : 'Z —';
+      el.hudXY.textContent = text;
+      el.hudZ.textContent = Number.isFinite(z) ? 'Z ' + z.toFixed(2) + ' m' : 'Z —';
+      el.hudDynamic.textContent = dynamicReadout(p);
+      el.statusX.textContent = demXY ? 'X ' + fmt(demXY[0], 3) : 'X ' + p[0].toFixed(5);
+      el.statusY.textContent = demXY ? 'Y ' + fmt(demXY[1], 3) : 'Y ' + p[1].toFixed(5);
+      el.statusZ.textContent = Number.isFinite(z) ? 'Z ' + z.toFixed(2) : 'Z —';
+    }
 
-    if (state.tool === 'clip-rect' && state.rectStart) {
-      state.sketch = [state.rectStart, p];
-      state.sketchKind = 'rect';
-      refreshSketch();
-    } else if (['polyline','polygon','clip-poly'].indexOf(state.tool) >= 0 && state.sketch.length) {
-      state.sketchHover = p;
-      refreshSketch();
+    // GeoJSON source updates are capped to ~30 fps only while drafting.
+    if (now - state.lastSketchTime >= 33) {
+      state.lastSketchTime = now;
+      if (state.tool === 'clip-rect' && state.rectStart) {
+        state.sketch = [state.rectStart, p];
+        state.sketchKind = 'rect';
+        refreshSketch();
+      } else if (['polyline','polygon','clip-poly'].indexOf(state.tool) >= 0 && state.sketch.length) {
+        state.sketchHover = p;
+        refreshSketch();
+      }
     }
   }
 
@@ -957,7 +987,9 @@
     ['PRINT','In bản đồ','print'],
     ['CLEAR','Xóa sketch','clear-sketch'],
     ['ORTHO','Bật/tắt khóa ngang dọc','toggle-ortho'],
-    ['SNAP','Bật/tắt bắt điểm','toggle-snap']
+    ['SNAP','Bật/tắt bắt điểm','toggle-snap'],
+    ['FOCUS','Tập trung vùng bản đồ','toggle-focus'],
+    ['THEME','Đổi giao diện sáng/tối','toggle-theme']
   ];
 
   function executeCommand(raw) {
@@ -1031,6 +1063,8 @@
       if (action === 'clear-sketch') return clearSketch();
       if (action === 'toggle-ortho') return toggleDrafting('ortho');
       if (action === 'toggle-snap') return toggleDrafting('snap');
+      if (action === 'toggle-theme') return toggleTheme();
+      if (action === 'toggle-focus') return toggleFocus();
       if (action === 'print') return window.print();
       if (action === 'apply-crs') return applyCrs();
       if (action === 'open-command-palette') return openPalette();
@@ -1043,6 +1077,43 @@
     } finally {
       setBusy(false);
     }
+  }
+
+  function applyTheme(theme, persist) {
+    theme = theme === 'dark' ? 'dark' : 'light';
+    state.theme = theme;
+    document.body.dataset.theme = theme;
+    if (el.themeToggle) {
+      el.themeToggle.textContent = theme === 'light' ? '☀' : '☾';
+      el.themeToggle.title = theme === 'light' ? 'Đang dùng giao diện sáng · bấm để chuyển tối' : 'Đang dùng giao diện tối · bấm để chuyển sáng';
+    }
+    if (persist !== false) {
+      try { localStorage.setItem('vf-editor-theme', theme); } catch (_) {}
+    }
+  }
+
+  function toggleTheme() {
+    applyTheme(state.theme === 'light' ? 'dark' : 'light', true);
+    setStatus('THEME: ' + state.theme.toUpperCase());
+  }
+
+  function toggleFocus(force) {
+    state.focusMode = typeof force === 'boolean' ? force : !state.focusMode;
+    document.body.classList.toggle('is-focus', state.focusMode);
+    if (el.focusToggle) {
+      el.focusToggle.textContent = state.focusMode ? '▤' : '▣';
+      el.focusToggle.title = state.focusMode ? 'Thoát Focus Map · F10' : 'Focus Map · F10';
+    }
+    setTimeout(function () { if (state.map && state.map.resize) state.map.resize(); }, 0);
+    setStatus('FOCUS MAP: ' + (state.focusMode ? 'ON' : 'OFF'));
+  }
+
+  function initUxPreferences() {
+    var saved = null;
+    try { saved = localStorage.getItem('vf-editor-theme'); } catch (_) {}
+    applyTheme(saved || 'light', false);
+    document.body.classList.remove('is-focus');
+    if (el.paletteBackdrop) el.paletteBackdrop.hidden = true;
   }
 
   function updateDraftingButtons() {
@@ -1164,6 +1235,10 @@
   document.addEventListener('keydown', function (e) {
     var key = e.key.toLowerCase();
 
+    if (e.key === 'F10') {
+      e.preventDefault();
+      return toggleFocus();
+    }
     if (e.key === 'F3') {
       e.preventDefault();
       return toggleDrafting('snap');
@@ -1192,6 +1267,7 @@
 
     if (e.key === 'Escape') {
       if (!el.paletteBackdrop.hidden) closePalette();
+      else if (state.focusMode) toggleFocus(false);
       else setTool('pan');
     }
 
@@ -1200,6 +1276,7 @@
     }
   });
 
+  initUxPreferences();
   renderEngines();
   checkTerrainContract();
   updateDraftingButtons();
