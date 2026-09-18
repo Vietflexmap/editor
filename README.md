@@ -96,3 +96,15 @@ Các nhóm chức năng lớn được giữ ở lớp engine adapter thay vì n
 Mở `index.html` qua GitHub Pages hoặc một static web server. Không cần build step.
 
 > Với DEM lớn, nên dùng COG/tiles hoặc engine backend/WASM. Việc đọc toàn bộ GeoTIFF vào RAM phù hợp cho DEM nhỏ-vừa và biên tập nhanh trên máy người dùng.
+
+
+## V0.3 UX
+
+- Mặc định dùng giao diện CAD sáng, trung tính và ít mỏi mắt.
+- Sửa lỗi Command Palette backdrop có thể làm tối toàn màn hình khi thuộc tính `hidden` bị CSS ghi đè.
+- F10: Focus Map; F3: SNAP; F8: ORTHO.
+- Crosshair chạy theo `requestAnimationFrame`; truy vấn X/Y/Z được throttle để giảm tải CPU.
+- Cập nhật sketch GeoJSON tối đa khoảng 30 FPS khi đang rê chuột.
+- Preview DEM dùng Blob/Object URL thay cho base64 Data URL để giảm RAM.
+- Bỏ `backdrop-filter` ở HUD để tránh compositing GPU liên tục.
+- Có light/dark theme, mặc định light và ghi nhớ lựa chọn.
