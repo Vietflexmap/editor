@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#20252b">
+  <title>Vietflex Terrain Editor</title>
+
+  <link rel="stylesheet" href="https://vietflexmap.github.io/openmap/dist/vietflex.css">
+  <link rel="stylesheet" href="./styles.css">
+
+  <script src="https://vietflexmap.github.io/openmap/dist/vietflex.js"></script>
+  <script src="https://vietflexmap.github.io/openmap/plugins/basemaps.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/geotiff@3.0.5/dist-browser/main.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/proj4@2.15.0/dist/proj4.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="titlebar">
+      <div class="brand">
+        <span class="brand-mark">VF</span>
+        <span class="brand-copy">
+          <strong>Vietflex Terrain Editor</strong>
+          <small>CAD-style DEM & Basic Map Editor</small>
+        </span>
+      </div>
+      <div class="document-title" id="document-title">Untitled DEM</div>
+      <div class="window-actions">
+        <button class="ghost-btn" data-action="about" title="Thông tin">ⓘ</button>
+      </div>
+    </header>
+
+    <nav class="menubar" aria-label="Menu chính">
+      <button data-menu="file">FILE</button>
+      <button data-menu="home">HOME</button>
+      <button data-menu="dem">DEM</button>
+      <button data-menu="analyze">ANALYZE</button>
+      <button data-menu="hydro">HYDRO</button>
+      <button data-menu="lidar">LIDAR</button>
+      <button data-menu="view">VIEW</button>
+      <button data-menu="output">OUTPUT</button>
+    </nav>
+
+    <section class="ribbon" id="ribbon">
+      <div class="ribbon-group">
+        <div class="ribbon-buttons">
+          <button class="ribbon-btn primary" data-action="open-dem"><span>↥</span><b>Mở DEM</b><small>GeoTIFF / ASC</small></button>
+          <button class="ribbon-btn" data-action="save-geotiff"><span>▣</span><b>GeoTIFF</b><small>Xuất raster</small></button>
+          <button class="ribbon-btn" data-action="save-asc"><span>≡</span><b>ASCII Grid</b><small>Xuất .asc</small></button>
+        </div>
+        <label>FILE</label>
+      </div>
+
+      <div class="ribbon-group">
+        <div class="ribbon-buttons compact">
+          <button class="tool-btn is-active" data-tool="pan" title="Pan / Select">⌖<small>Pan</small></button>
+          <button class="tool-btn" data-tool="point" title="Chấm điểm">●<small>Point</small></button>
+          <button class="tool-btn" data-tool="polyline" title="Vẽ đường">╱<small>Line</small></button>
+          <button class="tool-btn" data-tool="polygon" title="Vẽ vùng">⬠<small>Polygon</small></button>
+          <button class="tool-btn" data-tool="clip-rect" title="Cắt DEM hình chữ nhật">▭<small>Clip</small></button>
+          <button class="tool-btn" data-tool="clip-poly" title="Cắt DEM theo polygon">⬡<small>Mask</small></button>
+        </div>
+        <label>DRAW / EDIT</label>
+      </div>
+
+      <div class="ribbon-group">
+        <div class="ribbon-buttons compact">
+          <button class="tool-btn" data-render="elevation" title="Color relief">◩<small>DEM</small></button>
+          <button class="tool-btn" data-render="hillshade" title="Hillshade">◒<small>Shade</small></button>
+          <button class="tool-btn" data-render="slope" title="Slope">∠<small>Slope</small></button>
+          <button class="tool-btn" data-render="aspect" title="Aspect">✥<small>Aspect</small></button>
+          <button class="tool-btn" data-action="contours" title="Đường đồng mức">≋<small>Contour</small></button>
+          <button class="tool-btn" data-tool="elevation" title="Lấy cao độ">Z<small>Elev.</small></button>
+        </div>
+        <label>TERRAIN</label>
+      </div>
+
+      <div class="ribbon-group">
+        <div class="ribbon-buttons compact">
+          <button class="tool-btn" data-action="undo" title="Undo">↶<small>Undo</small></button>
+          <button class="tool-btn" data-action="redo" title="Redo">↷<small>Redo</small></button>
+          <button class="tool-btn" data-action="zoom-dem" title="Zoom đến DEM">⌗<small>Extent</small></button>
+          <button class="tool-btn" data-action="clear-sketch" title="Xóa bản vẽ">⌫<small>Clear</small></button>
+          <button class="tool-btn" data-action="print" title="In bản đồ">⎙<small>Print</small></button>
+        </div>
+        <label>UTILITY</label>
+      </div>
+    </section>
+
+    <main class="workspace">
+      <aside class="leftbar" aria-label="Thanh công cụ">
+        <button data-tool="pan" class="left-tool is-active" title="Pan / Select">⌖</button>
+        <button data-tool="point" class="left-tool" title="Chấm điểm">●</button>
+        <button data-tool="polyline" class="left-tool" title="Polyline">╱</button>
+        <button data-tool="polygon" class="left-tool" title="Polygon">⬠</button>
+        <span class="separator"></span>
+        <button data-tool="elevation" class="left-tool" title="Lấy cao độ">Z</button>
+        <button data-tool="clip-rect" class="left-tool" title="Clip rectangle">▭</button>
+        <button data-tool="clip-poly" class="left-tool" title="Clip polygon">⬡</button>
+        <span class="separator"></span>
+        <button data-action="zoom-dem" class="left-tool" title="Zoom DEM">⌗</button>
+        <button data-action="open-command-palette" class="left-tool" title="Command Palette">⌘</button>
+      </aside>
+
+      <section class="map-stage" id="map-stage">
+        <div id="map"></div>
+
+        <div class="crosshair" id="crosshair" aria-hidden="true">
+          <div class="crosshair-h"></div>
+          <div class="crosshair-v"></div>
+          <div class="crosshair-center"></div>
+        </div>
+
+        <div class="cursor-hud" id="cursor-hud">
+          <div id="hud-xy">X —  Y —</div>
+          <div id="hud-z">Z —</div>
+        </div>
+
+        <div class="north-arrow" title="Bắc">N<div>↑</div></div>
+
+        <div class="drop-zone" id="drop-zone">
+          <strong>THẢ DEM VÀO ĐÂY</strong>
+          <span>GeoTIFF (.tif/.tiff) hoặc ESRI ASCII Grid (.asc)</span>
+        </div>
+
+        <div class="floating-message" id="floating-message" hidden></div>
+      </section>
+
+      <aside class="rightdock">
+        <div class="dock-tabs">
+          <button class="dock-tab is-active" data-dock="layers">LAYERS</button>
+          <button class="dock-tab" data-dock="properties">PROPERTIES</button>
+          <button class="dock-tab" data-dock="analysis">ENGINE</button>
+        </div>
+
+        <section class="dock-panel is-active" data-panel="layers">
+          <div class="panel-toolbar">
+            <span>Drawing Order</span>
+            <div>
+              <button data-action="zoom-dem" title="Zoom layer">⌗</button>
+              <button data-action="clear-sketch" title="Clear sketches">⌫</button>
+            </div>
+          </div>
+          <div id="layer-list" class="layer-list">
+            <div class="layer-row locked">
+              <span class="layer-eye">◉</span>
+              <span class="layer-swatch basemap"></span>
+              <span class="layer-name">Vietflex OpenMap</span>
+              <span class="layer-tag">BASE</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="dock-panel" data-panel="properties">
+          <div class="property-grid">
+            <label>Name</label><output id="prop-name">—</output>
+            <label>Size</label><output id="prop-size">—</output>
+            <label>CRS</label>
+            <div class="inline-edit">
+              <input id="prop-crs" value="EPSG:4326" spellcheck="false">
+              <button data-action="apply-crs">Set</button>
+            </div>
+            <label>Extent</label><output id="prop-extent">—</output>
+            <label>Resolution</label><output id="prop-resolution">—</output>
+            <label>NoData</label><output id="prop-nodata">—</output>
+            <label>Min / Max</label><output id="prop-range">—</output>
+            <label>Mean</label><output id="prop-mean">—</output>
+            <label>Source</label><output id="prop-source">—</output>
+          </div>
+
+          <div class="section-title">DISPLAY</div>
+          <div class="slider-row">
+            <label for="opacity">Opacity</label>
+            <input id="opacity" type="range" min="0" max="1" step="0.05" value="0.82">
+            <output id="opacity-value">82%</output>
+          </div>
+
+          <div class="section-title">VIETFLEX TERRAIN</div>
+          <div class="terrain-contract">
+            <span id="terrain-contract-dot" class="status-dot"></span>
+            <div>
+              <strong id="terrain-contract-status">checking...</strong>
+              <small>openmap/terrain/manifest.json</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="dock-panel" data-panel="analysis">
+          <div class="engine-search">
+            <input id="engine-search" placeholder="Tìm: slope, D8, LiDAR, viewshed..." spellcheck="false">
+          </div>
+          <div id="engine-list" class="engine-list"></div>
+        </section>
+      </aside>
+    </main>
+
+    <section class="commandbar">
+      <div class="command-label">Command:</div>
+      <input id="command-input" autocomplete="off" spellcheck="false" placeholder="Nhập lệnh: OPEN, CLIP, CONTOUR, HILLSHADE, SLOPE, PRINT...">
+      <div class="status-toggle"><button id="ortho-toggle" class="is-on">ORTHO</button><button id="snap-toggle">SNAP</button></div>
+    </section>
+
+    <footer class="statusbar">
+      <div id="status-message">Ready — mở GeoTIFF/ASC hoặc thả file vào bản đồ.</div>
+      <div class="status-coords">
+        <span id="status-crs">WGS84</span>
+        <span id="status-x">X —</span>
+        <span id="status-y">Y —</span>
+        <span id="status-z">Z —</span>
+        <span id="status-zoom">ZL —</span>
+      </div>
+    </footer>
+  </div>
+
+  <input id="file-input" type="file" accept=".tif,.tiff,.asc,.txt" hidden>
+
+  <dialog id="about-dialog">
+    <form method="dialog" class="dialog-card">
+      <h2>Vietflex Terrain Editor</h2>
+      <p>Trình biên tập DEM cơ bản theo phong cách CAD, dùng Vietflex OpenMap làm renderer và geotiff.js cho raster trong browser.</p>
+      <p><b>V0.1:</b> GeoTIFF/ASC, crosshair X/Y/Z, color relief, hillshade, slope, aspect, contour, clip rectangle/polygon, export và print.</p>
+      <button>Đóng</button>
+    </form>
+  </dialog>
+
+  <div class="palette-backdrop" id="palette-backdrop" hidden>
+    <div class="command-palette">
+      <input id="palette-input" placeholder="Type a command or capability..." spellcheck="false">
+      <div id="palette-results"></div>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
