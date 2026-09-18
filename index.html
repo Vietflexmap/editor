@@ -112,11 +112,14 @@
           <div class="crosshair-h"></div>
           <div class="crosshair-v"></div>
           <div class="crosshair-center"></div>
+          <div class="crosshair-snap" id="crosshair-snap"></div>
         </div>
 
         <div class="cursor-hud" id="cursor-hud">
+          <div class="hud-command" id="hud-command">READY</div>
           <div id="hud-xy">X —  Y —</div>
           <div id="hud-z">Z —</div>
+          <div class="hud-dynamic" id="hud-dynamic"></div>
         </div>
 
         <div class="north-arrow" title="Bắc">N<div>↑</div></div>
@@ -200,7 +203,7 @@
     <section class="commandbar">
       <div class="command-label">Command:</div>
       <input id="command-input" autocomplete="off" spellcheck="false" placeholder="Nhập lệnh: OPEN, CLIP, CONTOUR, HILLSHADE, SLOPE, PRINT...">
-      <div class="status-toggle"><button id="ortho-toggle" class="is-on">ORTHO</button><button id="snap-toggle">SNAP</button></div>
+      <div class="status-toggle"><button id="ortho-toggle" class="is-on" title="F8 · khóa phương ngang/dọc">ORTHO <kbd>F8</kbd></button><button id="snap-toggle" title="F3 · bắt điểm sketch">SNAP <kbd>F3</kbd></button></div>
     </section>
 
     <footer class="statusbar">
@@ -233,6 +236,9 @@
     </div>
   </div>
 
-  <script src="./terrain-core.js"></script>\n  <script src="./terrain-io.js"></script>\n  <script src="./terrain-edit.js"></script>\n  <script src="./app.js"></script>
+  <script src="./terrain-core.js"></script>
+  <script src="./terrain-io.js"></script>
+  <script src="./terrain-edit.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
