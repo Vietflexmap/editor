@@ -91,3 +91,115 @@ dialog{border:1px solid #56616d;border-radius:5px;padding:0;background:#22282f;c
 @media(max-width:680px){
   .app-shell{grid-template-rows:34px 28px 70px minmax(0,1fr) 31px 24px}.rightdock{display:none}.workspace{grid-template-columns:36px 1fr}.ribbon-group{padding-left:2px;padding-right:4px}.ribbon-btn{min-width:55px}.tool-btn{width:39px}.status-coords span:nth-child(1),.status-coords span:nth-child(4){display:none}
 }
+
+
+/* === Vietflex Terrain Editor V0.2 — fast CAD drafting UX === */
+.map-stage{contain:layout paint;isolation:isolate}
+.maplibregl-canvas{cursor:none!important}
+.crosshair{--cx:50%;--cy:50%;will-change:contents}
+.crosshair-h,.crosshair-v{
+  top:0;left:0;
+  background:rgba(232,242,248,.76);
+  box-shadow:0 0 1px rgba(0,0,0,.8);
+  will-change:transform;
+  transform-origin:0 0;
+}
+.crosshair-h{
+  width:100%;height:1px;right:auto;
+  transform:translate3d(0,var(--cy),0);
+}
+.crosshair-v{
+  width:1px;height:100%;bottom:auto;
+  transform:translate3d(var(--cx),0,0);
+}
+.crosshair-center{
+  left:0;top:0;
+  width:11px;height:11px;
+  border:1px solid rgba(255,255,255,.96);
+  background:rgba(15,21,26,.36);
+  transform:translate3d(calc(var(--cx) - 5px),calc(var(--cy) - 5px),0);
+  will-change:transform;
+  box-shadow:0 0 0 1px rgba(0,0,0,.42);
+}
+.crosshair-center:before{width:3px;height:1px;left:3px;top:4px}
+.crosshair-center:after{width:1px;height:3px;left:4px;top:3px}
+.crosshair-snap{
+  display:none;
+  position:absolute;left:0;top:0;
+  width:15px;height:15px;
+  border:2px solid #72f59c;
+  background:rgba(22,54,35,.10);
+  transform:translate3d(calc(var(--cx) - 7px),calc(var(--cy) - 7px),0) rotate(45deg);
+  transform-origin:center;
+  will-change:transform;
+  filter:drop-shadow(0 0 2px rgba(0,0,0,.8));
+}
+.crosshair.is-snapped .crosshair-snap{display:block}
+.crosshair.is-snapped .crosshair-center{border-color:#72f59c}
+.crosshair.is-ortho .crosshair-h,.crosshair.is-ortho .crosshair-v{background:rgba(126,210,255,.82)}
+
+.cursor-hud{
+  min-width:186px;
+  padding:0;
+  overflow:hidden;
+  border:1px solid rgba(126,210,255,.50);
+  border-radius:3px;
+  background:rgba(20,26,31,.94);
+  box-shadow:0 5px 18px rgba(0,0,0,.34);
+  backdrop-filter:blur(5px);
+  transform:translateZ(0);
+  will-change:left,top;
+}
+.cursor-hud>div{padding:3px 7px}
+.cursor-hud .hud-command{
+  padding-top:4px;padding-bottom:4px;
+  border-bottom:1px solid rgba(255,255,255,.08);
+  background:rgba(48,63,75,.65);
+  color:#8ed8ff;
+  font:700 9px/1 ui-monospace,SFMono-Regular,Consolas,monospace;
+  letter-spacing:.5px;
+}
+.cursor-hud .hud-dynamic{
+  display:none;
+  border-top:1px solid rgba(255,255,255,.06);
+  color:#79eaa0;
+  font-weight:700;
+}
+.cursor-hud .hud-dynamic:not(:empty){display:block}
+.crosshair.is-snapped + .cursor-hud{border-color:rgba(114,245,156,.7)}
+.crosshair.is-snapped + .cursor-hud .hud-command{color:#79eaa0}
+
+.status-toggle{align-items:center}
+.status-toggle button{
+  min-width:64px;border-radius:2px;padding:0 6px;
+  transition:background .08s ease,border-color .08s ease,color .08s ease;
+}
+.status-toggle button kbd{
+  margin-left:3px;padding:0 3px;border:0;border-radius:2px;
+  background:rgba(255,255,255,.07);color:#778793;
+  font:7px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;
+}
+.status-toggle button.is-on{color:#e2f5ff;border-color:#3c7eb3;background:#28465d}
+.status-toggle button.is-on kbd{color:#a8d8f6;background:rgba(0,0,0,.14)}
+
+.left-tool,.tool-btn,.ribbon-btn,.dock-tab,.menubar button{
+  transition:background .08s ease,border-color .08s ease,color .08s ease,box-shadow .08s ease;
+}
+.left-tool:active,.tool-btn:active,.ribbon-btn:active{transform:translateY(1px)}
+.map-stage[data-tool="point"] .crosshair-center,
+.map-stage[data-tool="elevation"] .crosshair-center{border-radius:50%}
+.map-stage[data-tool="clip-rect"] .crosshair-center,
+.map-stage[data-tool="clip-poly"] .crosshair-center{border-color:#ffd477}
+.map-stage[data-tool="polyline"] .crosshair-center,
+.map-stage[data-tool="polygon"] .crosshair-center{border-color:#7fd9ff}
+
+body.is-busy .map-stage:after{
+  content:"PROCESSING";
+  position:absolute;left:50%;top:14px;z-index:80;
+  transform:translateX(-50%);
+  padding:5px 9px;border:1px solid #52606c;border-radius:3px;
+  background:rgba(21,27,32,.94);color:#b7c7d3;
+  font:700 8px/1 ui-monospace,SFMono-Regular,Consolas,monospace;
+  letter-spacing:1px;
+  pointer-events:none;
+}
