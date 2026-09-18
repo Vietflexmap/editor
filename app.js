@@ -22,8 +22,12 @@
     stage: byId('map-stage'),
     crosshair: byId('crosshair'),
     cursorHud: byId('cursor-hud'),
+    hudCommand: byId('hud-command'),
     hudXY: byId('hud-xy'),
     hudZ: byId('hud-z'),
+    hudDynamic: byId('hud-dynamic'),
+    orthoToggle: byId('ortho-toggle'),
+    snapToggle: byId('snap-toggle'),
     dropZone: byId('drop-zone'),
     floating: byId('floating-message'),
     documentTitle: byId('document-title'),
@@ -73,7 +77,13 @@
     redo: [],
     clipboard: null,
     messageTimer: null,
-    engineFilter: ''
+    engineFilter: '',
+    pendingMove: null,
+    moveFrame: 0,
+    hoverLngLat: null,
+    snapEnabled: false,
+    orthoEnabled: true,
+    snapTolerance: 12
   };
 
   var capabilities = [
@@ -356,39 +366,136 @@
     renderDem(false);
   }
 
-  function onMapMove(e) {
-    var x = e.point.x;
-    var y = e.point.y;
-    var z = C.sampleElevation(state.dem, e.lngLat.lng, e.lngLat.lat);
+  function distanceBearing(a, b) {
+    var R = 6371008.8;
+    var p1 = a[1] * Math.PI / 180;
+    var p2 = b[1] * Math.PI / 180;
+    var dp = (b[1] - a[1]) * Math.PI / 180;
+    var dl = (b[0] - a[0]) * Math.PI / 180;
+    var h = Math.sin(dp / 2) * Math.sin(dp / 2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
+    var distance = 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+    var y = Math.sin(dl) * Math.cos(p2);
+    var x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+    var bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    return { distance: distance, bearing: bearing };
+  }
 
+  function collectSnapVertices() {
+    var out = [];
+    state.points.forEach(function (p) { out.push(p); });
+    state.lines.forEach(function (line) { line.forEach(function (p) { out.push(p); }); });
+    state.polygons.forEach(function (poly) { poly.forEach(function (p) { out.push(p); }); });
+    state.sketch.forEach(function (p) { out.push(p); });
+    return out;
+  }
+
+  function findSnap(point) {
+    if (!state.snapEnabled || !state.map) return null;
+    var best = null;
+    var limit2 = state.snapTolerance * state.snapTolerance;
+    collectSnapVertices().forEach(function (v) {
+      var sp = state.map.project(v);
+      var dx = sp.x - point.x;
+      var dy = sp.y - point.y;
+      var d2 = dx * dx + dy * dy;
+      if (d2 <= limit2 && (!best || d2 < best.d2)) best = { lngLat: v.slice(), point: sp, d2: d2 };
+    });
+    return best;
+  }
+
+  function applyOrtho(p) {
+    if (!state.orthoEnabled || !state.map || !state.sketch.length ||
+        ['polyline','polygon','clip-poly'].indexOf(state.tool) < 0) return p;
+    var anchor = state.sketch[state.sketch.length - 1];
+    var a = state.map.project(anchor);
+    var q = state.map.project(p);
+    if (Math.abs(q.x - a.x) >= Math.abs(q.y - a.y)) q.y = a.y;
+    else q.x = a.x;
+    var ll = state.map.unproject(q);
+    return [ll.lng, ll.lat];
+  }
+
+  function resolveDraftPoint(e) {
+    var raw = [e.lngLat.lng, e.lngLat.lat];
+    var snap = findSnap(e.point);
+    if (snap) return { lngLat: snap.lngLat, point: snap.point, snapped: true };
+    var constrained = applyOrtho(raw);
+    var point = state.map ? state.map.project(constrained) : e.point;
+    return { lngLat: constrained, point: point, snapped: false };
+  }
+
+  function dynamicReadout(p) {
+    if (!state.sketch.length || ['polyline','polygon','clip-poly'].indexOf(state.tool) < 0) return '';
+    var a = state.sketch[state.sketch.length - 1];
+    if (state.dem) {
+      var da = C.fromWgs84(a[0], a[1], state.dem.crs);
+      var db = C.fromWgs84(p[0], p[1], state.dem.crs);
+      if (da && db && state.dem.crs !== 'EPSG:4326') {
+        var dx = db[0] - da[0], dy = db[1] - da[1];
+        var len = Math.sqrt(dx * dx + dy * dy);
+        return 'L ' + fmt(len, 3) + '  ΔX ' + fmt(dx, 3) + '  ΔY ' + fmt(dy, 3);
+      }
+    }
+    var dbear = distanceBearing(a, p);
+    return 'L ' + fmt(dbear.distance, 2) + ' m   ∠ ' + fmt(dbear.bearing, 1) + '°';
+  }
+
+  function processMapMove(e) {
+    if (!e) return;
+    var resolved = resolveDraftPoint(e);
+    var p = resolved.lngLat;
+    var x = resolved.point.x;
+    var y = resolved.point.y;
+    state.hoverLngLat = p;
+
+    var z = C.sampleElevation(state.dem, p[0], p[1]);
     el.crosshair.style.setProperty('--cx', x + 'px');
     el.crosshair.style.setProperty('--cy', y + 'px');
-    el.cursorHud.style.left = Math.min(el.stage.clientWidth - 155, x + 13) + 'px';
-    el.cursorHud.style.top = Math.min(el.stage.clientHeight - 48, y + 13) + 'px';
+    el.crosshair.classList.toggle('is-snapped', resolved.snapped);
+    el.crosshair.classList.toggle('is-ortho', state.orthoEnabled && state.sketch.length > 0);
 
-    var text = 'Lon ' + e.lngLat.lng.toFixed(6) + '  Lat ' + e.lngLat.lat.toFixed(6);
-    var demXY = state.dem ? C.fromWgs84(e.lngLat.lng, e.lngLat.lat, state.dem.crs) : null;
+    var hudWidth = 205, hudHeight = 86;
+    var left = x + 15;
+    var top = y + 15;
+    if (left + hudWidth > el.stage.clientWidth) left = x - hudWidth - 15;
+    if (top + hudHeight > el.stage.clientHeight) top = y - hudHeight - 15;
+    el.cursorHud.style.left = Math.max(4, left) + 'px';
+    el.cursorHud.style.top = Math.max(4, top) + 'px';
 
+    var text = 'Lon ' + p[0].toFixed(6) + '  Lat ' + p[1].toFixed(6);
+    var demXY = state.dem ? C.fromWgs84(p[0], p[1], state.dem.crs) : null;
     if (demXY) text = 'X ' + fmt(demXY[0], 3) + '  Y ' + fmt(demXY[1], 3);
 
     el.hudXY.textContent = text;
     el.hudZ.textContent = Number.isFinite(z) ? 'Z ' + z.toFixed(2) + ' m' : 'Z —';
-    el.statusX.textContent = demXY ? 'X ' + fmt(demXY[0], 3) : 'X ' + e.lngLat.lng.toFixed(5);
-    el.statusY.textContent = demXY ? 'Y ' + fmt(demXY[1], 3) : 'Y ' + e.lngLat.lat.toFixed(5);
+    el.hudDynamic.textContent = dynamicReadout(p);
+    el.statusX.textContent = demXY ? 'X ' + fmt(demXY[0], 3) : 'X ' + p[0].toFixed(5);
+    el.statusY.textContent = demXY ? 'Y ' + fmt(demXY[1], 3) : 'Y ' + p[1].toFixed(5);
     el.statusZ.textContent = Number.isFinite(z) ? 'Z ' + z.toFixed(2) : 'Z —';
 
     if (state.tool === 'clip-rect' && state.rectStart) {
-      state.sketch = [state.rectStart, [e.lngLat.lng, e.lngLat.lat]];
+      state.sketch = [state.rectStart, p];
       state.sketchKind = 'rect';
       refreshSketch();
     } else if (['polyline','polygon','clip-poly'].indexOf(state.tool) >= 0 && state.sketch.length) {
-      state.sketchHover = [e.lngLat.lng, e.lngLat.lat];
+      state.sketchHover = p;
       refreshSketch();
     }
   }
 
+  function onMapMove(e) {
+    state.pendingMove = e;
+    if (state.moveFrame) return;
+    state.moveFrame = requestAnimationFrame(function () {
+      state.moveFrame = 0;
+      processMapMove(state.pendingMove);
+    });
+  }
+
   function setTool(tool) {
     state.tool = tool;
+    el.stage.dataset.tool = tool;
+    if (el.hudCommand) el.hudCommand.textContent = tool === 'pan' ? 'READY' : tool.toUpperCase();
     state.rectStart = null;
     state.sketch = [];
     state.sketchHover = null;
@@ -408,7 +515,7 @@
   }
 
   function onMapClick(e) {
-    var p = [e.lngLat.lng, e.lngLat.lat];
+    var p = resolveDraftPoint(e).lngLat;
 
     if (state.tool === 'point') {
       state.points.push(p);
@@ -848,7 +955,9 @@
     ['UNDO','Undo raster edit','undo'],
     ['REDO','Redo raster edit','redo'],
     ['PRINT','In bản đồ','print'],
-    ['CLEAR','Xóa sketch','clear-sketch']
+    ['CLEAR','Xóa sketch','clear-sketch'],
+    ['ORTHO','Bật/tắt khóa ngang dọc','toggle-ortho'],
+    ['SNAP','Bật/tắt bắt điểm','toggle-snap']
   ];
 
   function executeCommand(raw) {
@@ -920,6 +1029,8 @@
       if (action === 'copy-sketch') return copySketch();
       if (action === 'paste-sketch') return pasteSketch();
       if (action === 'clear-sketch') return clearSketch();
+      if (action === 'toggle-ortho') return toggleDrafting('ortho');
+      if (action === 'toggle-snap') return toggleDrafting('snap');
       if (action === 'print') return window.print();
       if (action === 'apply-crs') return applyCrs();
       if (action === 'open-command-palette') return openPalette();
@@ -933,6 +1044,28 @@
       setBusy(false);
     }
   }
+
+  function updateDraftingButtons() {
+    if (el.orthoToggle) {
+      el.orthoToggle.classList.toggle('is-on', state.orthoEnabled);
+      el.orthoToggle.setAttribute('aria-pressed', String(state.orthoEnabled));
+    }
+    if (el.snapToggle) {
+      el.snapToggle.classList.toggle('is-on', state.snapEnabled);
+      el.snapToggle.setAttribute('aria-pressed', String(state.snapEnabled));
+    }
+    el.crosshair.classList.toggle('is-ortho', state.orthoEnabled && state.sketch.length > 0);
+  }
+
+  function toggleDrafting(kind) {
+    if (kind === 'ortho') state.orthoEnabled = !state.orthoEnabled;
+    if (kind === 'snap') state.snapEnabled = !state.snapEnabled;
+    updateDraftingButtons();
+    setStatus((kind === 'ortho' ? 'ORTHO' : 'SNAP') + ': ' + ((kind === 'ortho' ? state.orthoEnabled : state.snapEnabled) ? 'ON' : 'OFF'));
+  }
+
+  if (el.orthoToggle) el.orthoToggle.addEventListener('click', function () { toggleDrafting('ortho'); });
+  if (el.snapToggle) el.snapToggle.addEventListener('click', function () { toggleDrafting('snap'); });
 
   all('[data-action]').forEach(function (b) {
     b.addEventListener('click', function () { runAction(b.dataset.action); });
@@ -1031,6 +1164,15 @@
   document.addEventListener('keydown', function (e) {
     var key = e.key.toLowerCase();
 
+    if (e.key === 'F3') {
+      e.preventDefault();
+      return toggleDrafting('snap');
+    }
+    if (e.key === 'F8') {
+      e.preventDefault();
+      return toggleDrafting('ortho');
+    }
+
     if ((e.ctrlKey || e.metaKey) && key === 'o') {
       e.preventDefault();
       runAction('open-dem');
@@ -1060,5 +1202,6 @@
 
   renderEngines();
   checkTerrainContract();
+  updateDraftingButtons();
   setTool('pan');
 })();
