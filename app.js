@@ -71,6 +71,7 @@
     polygons: [],
     undo: [],
     redo: [],
+    clipboard: null,
     messageTimer: null,
     engineFilter: ''
   };
@@ -605,6 +606,70 @@
     setStatus('Editor Sketch cleared.');
   }
 
+  function sketchGeoJson() {
+    var features = [];
+    state.points.forEach(function (p) {
+      features.push({ type: 'Feature', properties: { kind: 'point' }, geometry: { type: 'Point', coordinates: p.slice() } });
+    });
+    state.lines.forEach(function (line) {
+      features.push({ type: 'Feature', properties: { kind: 'line' }, geometry: { type: 'LineString', coordinates: line.map(function (p) { return p.slice(); }) } });
+    });
+    state.polygons.forEach(function (poly) {
+      var ring = poly.map(function (p) { return p.slice(); });
+      if (ring.length && (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1])) ring.push(ring[0].slice());
+      features.push({ type: 'Feature', properties: { kind: 'polygon' }, geometry: { type: 'Polygon', coordinates: [ring] } });
+    });
+    return { type: 'FeatureCollection', features: features };
+  }
+
+  async function copySketch() {
+    var fc = sketchGeoJson();
+    if (!fc.features.length) return flash('Sketch đang trống.', 'warn');
+    var text = JSON.stringify(fc);
+    state.clipboard = text;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(text);
+      setStatus('COPY: ' + fc.features.length + ' feature(s) · GeoJSON clipboard.');
+    } catch (_) {
+      setStatus('COPY: ' + fc.features.length + ' feature(s) · internal clipboard.');
+    }
+  }
+
+  function importSketchGeoJson(fc) {
+    if (!fc || fc.type !== 'FeatureCollection' || !Array.isArray(fc.features)) throw new Error('Clipboard không phải GeoJSON FeatureCollection.');
+    var added = 0;
+    fc.features.forEach(function (feature) {
+      var g = feature && feature.geometry;
+      if (!g) return;
+      if (g.type === 'Point' && Array.isArray(g.coordinates)) {
+        state.points.push(g.coordinates.slice(0, 2));
+        added++;
+      } else if (g.type === 'LineString' && Array.isArray(g.coordinates)) {
+        state.lines.push(g.coordinates.map(function (p) { return p.slice(0, 2); }));
+        added++;
+      } else if (g.type === 'Polygon' && Array.isArray(g.coordinates) && Array.isArray(g.coordinates[0])) {
+        var ring = g.coordinates[0].map(function (p) { return p.slice(0, 2); });
+        if (ring.length > 1 && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]) ring.pop();
+        state.polygons.push(ring);
+        added++;
+      }
+    });
+    refreshSketch();
+    updateLayerList();
+    return added;
+  }
+
+  async function pasteSketch() {
+    var text = null;
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) text = await navigator.clipboard.readText();
+    } catch (_) {}
+    if (!text) text = state.clipboard;
+    if (!text) return flash('Clipboard chưa có GeoJSON.', 'warn');
+    var added = importSketchGeoJson(JSON.parse(text));
+    setStatus('PASTE: ' + added + ' feature(s).');
+  }
+
   function generateContours() {
     if (!state.dem) return flash('Hãy mở DEM trước.', 'warn');
     if (!window.d3 || !d3.contours) return flash('d3-contour chưa tải được.', 'error');
@@ -778,6 +843,8 @@
     ['DEM','Render elevation','render:elevation'],
     ['CONTOUR','Tạo đường đồng mức','contours'],
     ['EXTENT','Zoom DEM','zoom-dem'],
+    ['COPY','Copy sketch GeoJSON','copy-sketch'],
+    ['PASTE','Paste sketch GeoJSON','paste-sketch'],
     ['UNDO','Undo raster edit','undo'],
     ['REDO','Redo raster edit','redo'],
     ['PRINT','In bản đồ','print'],
@@ -850,6 +917,8 @@
       if (action === 'undo') return undo();
       if (action === 'redo') return redo();
       if (action === 'zoom-dem') return fitDem();
+      if (action === 'copy-sketch') return copySketch();
+      if (action === 'paste-sketch') return pasteSketch();
       if (action === 'clear-sketch') return clearSketch();
       if (action === 'print') return window.print();
       if (action === 'apply-crs') return applyCrs();
