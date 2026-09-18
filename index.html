@@ -15,7 +15,7 @@
   <script src="https://cdn.jsdelivr.net/npm/proj4@2.15.0/dist/proj4.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
 </head>
-<body>
+<body data-theme="light">
   <div id="app" class="app-shell">
     <header class="titlebar">
       <div class="brand">
@@ -27,6 +27,8 @@
       </div>
       <div class="document-title" id="document-title">Untitled DEM</div>
       <div class="window-actions">
+        <button class="ghost-btn" id="focus-toggle" data-action="toggle-focus" title="Focus Map · F11">▣</button>
+        <button class="ghost-btn" id="theme-toggle" data-action="toggle-theme" title="Đổi giao diện sáng/tối">☀</button>
         <button class="ghost-btn" data-action="about" title="Thông tin">ⓘ</button>
       </div>
     </header>
@@ -224,7 +226,7 @@
     <form method="dialog" class="dialog-card">
       <h2>Vietflex Terrain Editor</h2>
       <p>Trình biên tập DEM cơ bản theo phong cách CAD, dùng Vietflex OpenMap làm renderer và geotiff.js cho raster trong browser.</p>
-      <p><b>V0.2:</b> crosshair CAD mượt bằng requestAnimationFrame, pickbox, object SNAP (F3), ORTHO (F8), dynamic input X/Y/Z · ΔX/ΔY · chiều dài/góc, cùng workflow GeoTIFF/ASC, terrain analysis, clip, export và print.</p>
+      <p><b>V0.3 UX:</b> giao diện sáng trung tính mặc định, Focus Map (F11), sửa lớp overlay làm tối màn hình, crosshair CAD nhẹ hơn, HUD X/Y/Z được throttle để giảm tải CPU/GPU, SNAP (F3), ORTHO (F8), GeoTIFF/ASC, terrain analysis, clip, export và print.</p>
       <button>Đóng</button>
     </form>
   </dialog>
